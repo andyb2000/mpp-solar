@@ -565,6 +565,33 @@ QUERY_COMMANDS = {
             b"(B\xe7\xc9\r",
         ],
     },
+    "QDOP": {
+        "name": "QDOP",
+        "description": "2nd output relay information inquiry",
+        "help": " -- queries SoC % parameter",
+        "type": "QUERY",
+        "response_type": "INDEXED",
+        "response": [
+            [1,  "Reserved", "discard", ""],
+            [2,  "Reserved", "discard", ""],
+            [3,  "Reserved", "discard", ""],
+            [4,  "Reserved", "discard", ""],
+            [5,  "Reserved", "discard", ""],
+            [6,  "Reserved", "discard", ""],
+            [7,  "Reserved", "discard", ""],
+            [8,  "Reserved", "discard", ""],
+            [9,  "Battery re-charge capacity", "int", "%"],
+            [10,  "Battery re-discharge capacity", "int", "%"],
+            [11,  "Battery under capacity", "int", "%"],
+            [12,  "Reserved", "discard", ""],
+            [13,  "Reserved", "discard", ""],
+            [14,  "Reserved", "discard", ""],
+
+        ],
+        "test_responses": [
+            b"(0 0 0 0 00.0 00.0 000 00 025 035 010 000 00 00\x98S\r",
+        ],
+    },
 
 }
 
