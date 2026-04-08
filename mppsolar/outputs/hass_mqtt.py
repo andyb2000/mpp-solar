@@ -57,7 +57,8 @@ class hass_mqtt(mqtt):
                     topic = topic.replace(" ", "_")
                     name = f"{tag} {_key}"
                     payload = f'{{"name": "{name}", "state_topic": "homeassistant/binary_sensor/mpp_{tag}_{key}/state", "unique_id": "mpp_{tag}_{key}", "force_update": "true" }}'
-                    msg = {"topic": topic, "payload": payload}
+                    # Retain config/autodiscovery so HA picks it up after a restart
+                    msg = {"topic": topic, "payload": payload, "retain": True}
                     msgs.append(msg)
                     topic = f"homeassistant/binary_sensor/mpp_{tag}_{key}/state"
                     if value == 0 or value == "0" or value == "disabled":
@@ -65,7 +66,8 @@ class hass_mqtt(mqtt):
                         value = "OFF"
                     elif value == 1 or value == "1" or value == "enabled":
                         value = "ON"
-                    msg = {"topic": topic, "payload": value}
+                    # State messages are time-sensitive — do not retain stale values
+                    msg = {"topic": topic, "payload": value, "retain": False}
                     msgs.append(msg)
                 else:
                     topic = f"homeassistant/sensor/mpp_{tag}_{key}/config"
@@ -77,8 +79,8 @@ class hass_mqtt(mqtt):
                         payload = f'{{"name": "{name}", "state_topic": "homeassistant/sensor/mpp_{tag}_{key}/state", "unique_id": "mpp_{tag}_{key}", "force_update": "true" }}'
                     else:
                         payload = f'{{"name": "{name}", "state_topic": "homeassistant/sensor/mpp_{tag}_{key}/state", "unit_of_measurement": "{unit}", "unique_id": "mpp_{tag}_{key}", "force_update": "true" }}'
-                    # msg = {"topic": topic, "payload": payload, "retain": True}
-                    msg = {"topic": topic, "payload": payload}
+                    # Retain config/autodiscovery so HA picks it up after a restart
+                    msg = {"topic": topic, "payload": payload, "retain": True}
                     msgs.append(msg)
                     #
                     # VALUE SETTING
@@ -87,7 +89,8 @@ class hass_mqtt(mqtt):
                     # 'tag'/status/total_output_active_power/value 1250
                     # 'tag'/status/total_output_active_power/unit W
                     topic = f"homeassistant/sensor/mpp_{tag}_{key}/state"
-                    msg = {"topic": topic, "payload": value}
+                    # State messages are time-sensitive — do not retain stale values
+                    msg = {"topic": topic, "payload": value, "retain": False}
                     msgs.append(msg)
         return msgs
 

@@ -35,6 +35,10 @@ class MqttBroker:
         self._isConnected = False
         self.enabled = self.name is not None
 
+        # Default QoS for outgoing messages. 0 = fire-and-forget (daemon mode),
+        # 1 = at-least-once (single-run mode). Set by caller after construction.
+        self.default_qos = 0
+
         # Internal tracking
         self._device_name = None
         self._connection = None
@@ -107,7 +111,7 @@ class MqttBroker:
         self._device_name = device_name
         return True
 
-    def publish(self, topic: str, payload: str, qos: int = 0, retain: bool = False,
+    def publish(self, topic: str, payload: str, qos: int = None, retain: bool = False,
                 device_name: str = None):
         """Publish a single message"""
         if self.name == "screen":
@@ -118,10 +122,12 @@ class MqttBroker:
             log.warning("Cannot publish - no connection available")
             return
 
-        self._connection.publish(topic, payload, qos, retain)
+        effective_qos = qos if qos is not None else self.default_qos
+        self._connection.publish(topic, payload, effective_qos, retain)
 
     def publishMultiple(self, data: List[Dict[str, Any]], device_name: str = None):
-        """Publish multiple messages"""
+        """Publish multiple messages, applying default_qos to any message that
+        does not carry an explicit 'qos' key."""
         if self.name == "screen":
             for msg in data:
                 print(f"mqtt debug output only as broker name is 'screen' - topic: '{msg['topic']}', payload: '{msg['payload']}'")
@@ -131,7 +137,15 @@ class MqttBroker:
             log.warning("Cannot publish multiple - no connection available")
             return
 
-        self._connection.publish_multiple(data)
+        resolved = []
+        for msg in data:
+            m = dict(msg)
+            if 'qos' not in m:
+                m['qos'] = self.default_qos
+            if 'retain' not in m:
+                m['retain'] = False
+            resolved.append(m)
+        self._connection.publish_multiple(resolved)
 
     def setup_device_commands(self, device_name: str, allowed_commands: List[str],
                             command_callback = None):

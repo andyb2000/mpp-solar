@@ -68,6 +68,9 @@ class MqttConnection:
         self.publish_queue = Queue()
         self.publish_thread = None
         self.devices = {}  # device_name -> DeviceConfig
+        # MessageInfo objects for QoS>0 publishes — used in stop() to wait for
+        # broker ACKs before disconnecting (critical for single-shot mode).
+        self._inflight_msgs: list = []
 
         # Setup client callbacks
         self.client.on_connect = self._on_connect
@@ -238,14 +241,37 @@ class MqttConnection:
         log.info(f"Stopping MQTT connection to {self.config.name}:{self.config.port}")
         self.should_stop.set()
 
+        # Block until every queued message has been processed by _publish_loop.
+        # _publish_loop calls task_done() in its finally block for each get(),
+        # so this unblocks only once all messages have been handed to paho.
+        self.publish_queue.join()
+
+        # Wait for the publish thread to fully exit before inspecting _inflight_msgs.
+        # It should exit almost immediately since the queue is empty and stop is set.
+        if self.publish_thread and self.publish_thread.is_alive():
+            self.publish_thread.join(timeout=2)
+
+        # Wait for broker ACKs on all QoS>0 messages before disconnecting.
+        # publish_queue.join() only guarantees messages were handed to paho's
+        # internal buffer — not that the broker has acknowledged them. Without
+        # this wait, disconnect() races against paho's network thread and drops
+        # unACKed messages (critical in single-shot / QoS=1 mode).
+        if self._inflight_msgs:
+            log.info(f"Waiting for {len(self._inflight_msgs)} QoS>0 message(s) to be ACKed")
+            for msg_info in self._inflight_msgs:
+                try:
+                    msg_info.wait_for_publish(timeout=5)
+                except Exception as e:
+                    log.warning(f"Timed out waiting for publish ACK: {e}")
+            self._inflight_msgs.clear()
+
+        # Now safe to disconnect — all messages are broker-acknowledged.
         if self.connected:
             self.client.disconnect()
+        self.client.loop_stop()
 
         if self.connection_thread and self.connection_thread.is_alive():
             self.connection_thread.join(timeout=5)
-
-        if self.publish_thread and self.publish_thread.is_alive():
-            self.publish_thread.join(timeout=5)
 
     def _connection_loop(self):
         """Main connection management loop"""
@@ -283,16 +309,30 @@ class MqttConnection:
 
     def _publish_loop(self):
         """Background thread for publishing queued messages"""
-        while not self.should_stop.is_set():
+        # Loop until stop is requested AND the queue is fully drained
+        while not self.should_stop.is_set() or not self.publish_queue.empty():
             try:
-                # Get message from queue with timeout
-                msg_data = self.publish_queue.get(timeout=1)
+                # Short timeout so we re-check the exit condition quickly
+                msg_data = self.publish_queue.get(timeout=0.1)
+            except Empty:
+                continue
+
+            try:
+                # Wait for connection rather than silently dropping the message.
+                # This covers the startup race where messages are queued before
+                # the async TCP connect completes.
+                wait_start = time.time()
+                while not self.connected:
+                    if time.time() - wait_start > 15:
+                        log.error(
+                            f"Dropping {msg_data['topic']} — not connected after 15s"
+                        )
+                        break
+                    time.sleep(0.1)
 
                 if self.connected:
                     topic = msg_data['topic']
                     payload = msg_data['payload']
-                    # FIXED: Use direct dictionary access instead of .get() with defaults
-                    # This preserves the QoS and retain values that were explicitly set
                     qos = msg_data['qos']
                     retain = msg_data['retain']
 
@@ -301,20 +341,23 @@ class MqttConnection:
                     if result.rc != mqtt_client.MQTT_ERR_SUCCESS:
                         log.warning(f"Failed to publish to {topic}: {result.rc}")
                     else:
+                        if qos > 0:
+                            # Track for ACK wait in stop() — ensures all QoS>0
+                            # messages are broker-acknowledged before disconnect.
+                            self._inflight_msgs.append(result)
                         if isinstance(payload, (bytes, str)):
                             preview = payload[:100]
                         else:
                             preview = str(payload)[:100]
                         log.debug(f"Published to {topic}: {preview}… (QoS={qos}, retain={retain})")
-                else:
-                    log.warning(f"Cannot publish to {msg_data['topic']} - not connected")
 
-            except Empty:
-                continue
             except KeyError as e:
                 log.error(f"Missing required key in message data: {e}")
             except Exception as e:
                 log.error(f"Error in publish loop: {e}")
+            finally:
+                # Always mark the task done so queue.join() can unblock in stop()
+                self.publish_queue.task_done()
 
     def publish(self, topic: str, payload: str, qos: int = 0, retain: bool = False):
         """Queue a message for publishing"""

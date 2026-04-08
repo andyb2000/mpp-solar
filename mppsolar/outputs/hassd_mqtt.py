@@ -2,7 +2,6 @@ import json as js
 import logging
 import re
 from datetime import datetime
-from time import sleep
 
 from ..helpers import get_kwargs, key_wanted
 from .mqtt import mqtt
@@ -158,10 +157,9 @@ class hassd_mqtt(mqtt):
                         }
                     )
 
-                # msg = {"topic": topic, "payload": payload, "retain": True}
                 payloads = js.dumps(payload)
-                # print(payloads)
-                msg = {"topic": topic, "payload": payloads}
+                # Retain config/autodiscovery so HA picks it up after a restart
+                msg = {"topic": topic, "payload": payloads, "retain": True}
                 config_msgs.append(msg)
                 #
                 # VALUE SETTING
@@ -169,7 +167,8 @@ class hassd_mqtt(mqtt):
                 # 'tag'/status/total_output_active_power/value 1250
                 # 'tag'/status/total_output_active_power/unit W
                 topic = f"homeassistant/{sensor}/mpp_{tag}_{key}/state"
-                msg = {"topic": topic, "payload": value}
+                # State messages are time-sensitive — do not retain stale values
+                msg = {"topic": topic, "payload": value, "retain": False}
                 value_msgs.append(msg)
         return config_msgs, value_msgs
 
@@ -196,7 +195,6 @@ class hassd_mqtt(mqtt):
         log.debug(f"hassd_mqtt.output config_msgs {config_msgs}")
         log.debug(f"hassd_mqtt.output value_msgs {value_msgs}")
 
-        # publish
+        # publish config msgs first, then value msgs — queue preserves order
         mqtt_broker.publishMultiple(config_msgs, device_name=device_name)
-        sleep(0.5)
         mqtt_broker.publishMultiple(value_msgs, device_name=device_name)

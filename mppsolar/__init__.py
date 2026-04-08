@@ -358,18 +358,24 @@ def main():
             # Only call daemonize() for DISABLED daemon type (manual daemonization)
             # OpenRC, systemd, and other init systems handle daemonization themselves
             if daemon_type == DaemonType.DISABLED:
-                log.info("Using DISABLED daemon type - performing manual daemonization...")
-                try:
-                    daemonize()
-                    log.info("Daemonized successfully")
-                    # Re-setup logging for the daemonized process
-                    if not setup_daemon_logging(log_file_path):
-                        sys.stderr.write("CRITICAL: Failed to setup file logging for daemon. Check permissions.\n")
-                    else:
-                        log.info("Daemon file logging successfully re-initialized.")
-                except Exception as e:
-                    log.error(f"Failed to daemonize process: {e}")
-                    log.info("Continuing in foreground mode")
+                if os.environ.get("MPP_NO_FORK"):
+                    # Running under a container supervisor (e.g. s6-overlay in Docker).
+                    # Enable the daemon loop without forking so the supervisor tracks
+                    # the correct PID. Set MPP_NO_FORK=1 in the container environment.
+                    log.info("MPP_NO_FORK set — foreground daemon mode, skipping fork")
+                else:
+                    log.info("Using DISABLED daemon type - performing manual daemonization...")
+                    try:
+                        daemonize()
+                        log.info("Daemonized successfully")
+                        # Re-setup logging for the daemonized process
+                        if not setup_daemon_logging(log_file_path):
+                            sys.stderr.write("CRITICAL: Failed to setup file logging for daemon. Check permissions.\n")
+                        else:
+                            log.info("Daemon file logging successfully re-initialized.")
+                    except Exception as e:
+                        log.error(f"Failed to daemonize process: {e}")
+                        log.info("Continuing in foreground mode")
             else:
                 log.info(f"Using {daemon_type.name} daemon type - init system will handle process management")
                 # For OpenRC/systemd, we still need to setup file logging since we're running as daemon
@@ -614,6 +620,12 @@ def main():
     # Notify systemd/init
     daemon.initialize()
     log_process_info("AFTER_DAEMON_INITIALIZE", log.info)
+
+    # Single-run mode publishes once and exits — use QoS 1 so paho holds each
+    # message until the broker ACKs it, preventing drops on shutdown.
+    # Daemon mode re-publishes every cycle so QoS 0 is fine and keeps overhead low.
+    mqtt_broker.default_qos = 0 if DAEMON_MODE else 1
+    log.info(f"MQTT default QoS set to {mqtt_broker.default_qos} ({'daemon' if DAEMON_MODE else 'single-run'} mode)")
 
     # Start MQTT manager
     mqtt_manager.start_all()
