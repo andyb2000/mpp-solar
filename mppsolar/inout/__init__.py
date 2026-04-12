@@ -46,6 +46,13 @@ def get_port_type(port):
     elif "esp" in port:
         log.debug("port matches esp")
         return PortType.ESP32
+    # pyserial URL schemes — must be checked before the ':' MAC address catch-all
+    elif port.startswith("rfc2217://"):
+        log.debug("port matches rfc2217:// — using serial")
+        return PortType.SERIAL
+    elif port.startswith("socket://"):
+        log.debug("port matches socket:// — using serial")
+        return PortType.SERIAL
     # JKBLE type ports
     elif ":" in port:
         # all mac addresses currently return as JKBLE

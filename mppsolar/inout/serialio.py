@@ -21,7 +21,10 @@ class SerialIO(BaseIO):
             with serial.serial_for_url(self._serial_port, self._serial_baud) as s:
                 log.debug("Executing command via serialio...")
                 s.timeout = 1
-                s.write_timeout = 1
+                try:
+                    s.write_timeout = 1
+                except Exception:
+                    pass  # rfc2217:// and some other backends don't support write_timeout
                 s.flushInput()
                 s.flushOutput()
                 s.write(full_command)
