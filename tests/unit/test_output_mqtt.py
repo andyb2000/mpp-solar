@@ -93,6 +93,10 @@ class TestMqttOutput(unittest.TestCase):
         self.assertIn("device", payload)
         self.assertIn("components", payload)
         self.assertTrue(any(key.endswith("battery_voltage") for key in payload["components"]))
+        battery_component = next(
+            component for key, component in payload["components"].items() if key.endswith("battery_voltage")
+        )
+        self.assertEqual(battery_component["name"], "Battery voltage")
         tombstones = [msg for msg in config_msgs if msg["payload"] == ""]
         self.assertEqual(len(tombstones), 1)
         self.assertTrue(tombstones[0]["topic"].startswith("homeassistant/sensor/mpp_"))

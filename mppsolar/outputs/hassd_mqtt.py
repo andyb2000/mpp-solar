@@ -118,7 +118,7 @@ class hassd_mqtt(mqtt):
                 component_id = f"mpp_{tag}_{key}"
                 component_cfg = {
                     "p": sensor,
-                    "name": f"{tag} {orig_key}",
+                    "name": f"{orig_key}",
                     "state_topic": f"homeassistant/{sensor}/mpp_{tag}_{key}/state",
                     "unique_id": component_id,
                     "force_update": True,
