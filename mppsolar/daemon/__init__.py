@@ -25,13 +25,14 @@ def detect_daemon_type():
     import os
     import shutil
     
-    # Check if systemd is available
-    if shutil.which('systemctl') and os.path.exists('/run/systemd/system'):
+    # Only use systemd notifications when running inside a systemd service
+    # context where NOTIFY_SOCKET is provided.
+    if shutil.which('systemctl') and os.path.exists('/run/systemd/system') and os.environ.get('NOTIFY_SOCKET'):
         return DaemonType.SYSTEMD
     
     # Check if OpenRC is available
     if shutil.which('rc-service') or os.path.exists('/sbin/openrc'):
         return DaemonType.OPENRC
     
-    # Default to disabled/generic daemon
+    # Default to OpenRC-compatible daemon handling (pid/signal/watchdog files)
     return DaemonType.OPENRC  # Use OpenRC implementation as fallback since it handles signals

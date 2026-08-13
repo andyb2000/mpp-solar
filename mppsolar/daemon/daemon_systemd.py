@@ -1,5 +1,6 @@
 """ daemon.py """
 import logging
+import os
 from enum import Enum, auto
 from time import time
 
@@ -23,10 +24,28 @@ class DaemonSystemd(Daemon):
     def __init__(self):
         self.type = DaemonType.SYSTEMD
         self.keepalive = 60
+        self._warned_notify_unavailable = False
         log.debug(f"got daemon type: {self.type}, keepalive: {self.keepalive}")
 
-        self._notify = notify
+        self._notify = self._safe_notify
         self._journal = journal.write
         self._Notification = Notification
 
         self.notify(f"got daemon type: {self.type}, keepalive: {self.keepalive}")
+
+    def _safe_notify(self, notification, message=None):
+        """Send systemd notification only when socket is available."""
+        if not os.environ.get("NOTIFY_SOCKET"):
+            if not self._warned_notify_unavailable:
+                log.info("NOTIFY_SOCKET is not set; skipping systemd notifications")
+                self._warned_notify_unavailable = True
+            return False
+
+        try:
+            if message is None:
+                return notify(notification)
+            return notify(notification, message)
+        except Exception as e:
+            # Keep daemon loop running even if sd_notify transport fails.
+            log.warning(f"systemd notify failed: {e}")
+            return False
