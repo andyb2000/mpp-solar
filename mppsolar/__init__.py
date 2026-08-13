@@ -231,6 +231,7 @@ def main():
         prog_name = "mpp-solar"
     s_prog_name = prog_name.replace("-", "")
     log_file_path = "/var/log/mpp-solar.log"
+    pause = 60
 
 
     # logging (DEBUG, INFO, WARNING, ERROR, CRITICAL)
