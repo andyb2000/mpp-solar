@@ -54,9 +54,10 @@ class TestMqttOutput(unittest.TestCase):
             fullconfig={"device": {"name": "mppsolar", "id": "mppsolar"}},
         )
 
-        payload = json.loads(config_msgs[0]["payload"])
-        self.assertIsInstance(payload["force_update"], bool)
-        self.assertTrue(payload["force_update"])
+        payload = json.loads(next(msg["payload"] for msg in config_msgs if msg["topic"].startswith("homeassistant/device/")))
+        component = next(iter(payload["components"].values()))
+        self.assertIsInstance(component["force_update"], bool)
+        self.assertTrue(component["force_update"])
 
         msgs = hass_mqtt().build_msgs(
             data={"Battery voltage": [51.4, "V"]},
@@ -92,3 +93,8 @@ class TestMqttOutput(unittest.TestCase):
         self.assertIn("device", payload)
         self.assertIn("components", payload)
         self.assertTrue(any(key.endswith("battery_voltage") for key in payload["components"]))
+        tombstones = [msg for msg in config_msgs if msg["payload"] == ""]
+        self.assertEqual(len(tombstones), 1)
+        self.assertTrue(tombstones[0]["topic"].startswith("homeassistant/sensor/mpp_"))
+        self.assertTrue(tombstones[0]["topic"].endswith("battery_voltage/config"))
+        self.assertTrue(tombstones[0]["retain"])

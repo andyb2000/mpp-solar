@@ -150,60 +150,14 @@ class hassd2_mqtt(mqtt):
                         }
                     )
                 device_components[component_id] = component_cfg
-                topic = f"homeassistant/{sensor}/mpp_{tag}_{key}/config"
-                topic = topic.replace(" ", "_")
-                name = f"{orig_key}"
-                payload = {
-                    "name": f"{name}",
-                    "state_topic": f"homeassistant/{sensor}/mpp_{tag}_{key}/state",
-                    "unique_id": f"{tag}_{key}",
-                    "force_update": True,
-                }
-                if unit and unit != "bool":
-                    payload["unit_of_measurement"] = f"{unit}"
-
-                # payload["device"] = {"name": f"{device_name}", "identifiers": ["mppsolar"], "model": "PIP6048MAX", "manufacturer": "MPP-Solar"}
-                payload["device"] = {
-                    "name": device_name,
-                    "identifiers": [device_id],
-                    "model": device_model,
-                    "manufacturer": device_manufacturer,
-                }
-
-                if device_class:
-                    payload["device_class"] = device_class
-                if state_class:
-                    payload["state_class"] = state_class
-                if icon:
-                    payload.update({"icon": icon})
-                if unit == "Hz":
-                    payload.update({"device_class": "frequency"})
-                if unit in ["A", "mA"]:
-                    payload.update({"device_class": "current"})
-                if unit in ["V", "mV"]:
-                    payload.update({"device_class": "voltage"})
-                if unit in ["W", "kW"]:
-                    payload.update({"device_class": "power"})
-                if unit == "Wh" or unit == "kWh":
-                    payload.update(
-                        {
-                            "icon": "mdi:counter",
-                            "device_class": "energy",
-                            "state_class": "total_increasing",
-                            "last_reset": str(datetime.now()),
-                        }
-                    )
-
-                # msg = {"topic": topic, "payload": payload, "retain": True}
-                payloads = js.dumps(payload)
-                # print(payloads)
-                msg = {"topic": topic, "payload": payloads}
-                config_msgs.append(msg)
-                #
+                config_msgs.append(
+                    {
+                        "topic": f"homeassistant/{sensor}/mpp_{tag}_{key}/config".replace(" ", "_"),
+                        "payload": "",
+                        "retain": True,
+                    }
+                )
                 # VALUE SETTING
-                #
-                # 'tag'/status/total_output_active_power/value 1250
-                # 'tag'/status/total_output_active_power/unit W
                 topic = f"homeassistant/{sensor}/mpp_{tag}_{key}/state"
                 msg = {"topic": topic, "payload": value}
                 value_msgs.append(msg)
