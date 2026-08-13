@@ -56,7 +56,7 @@ class hass_mqtt(mqtt):
                     topic = f"homeassistant/binary_sensor/mpp_{tag}_{key}/config"
                     topic = topic.replace(" ", "_")
                     name = f"{tag} {_key}"
-                    payload = f'{{"name": "{name}", "state_topic": "homeassistant/binary_sensor/mpp_{tag}_{key}/state", "unique_id": "mpp_{tag}_{key}", "force_update": "true" }}'
+                    payload = f'{{"name": "{name}", "state_topic": "homeassistant/binary_sensor/mpp_{tag}_{key}/state", "unique_id": "mpp_{tag}_{key}", "force_update": true }}'
                     # Retain config/autodiscovery so HA picks it up after a restart
                     msg = {"topic": topic, "payload": payload, "retain": True}
                     msgs.append(msg)
@@ -74,11 +74,11 @@ class hass_mqtt(mqtt):
                     topic = topic.replace(" ", "_")
                     name = f"{tag} {_key}"
                     if unit == "W":
-                        payload = f'{{"name": "{name}", "state_topic": "homeassistant/sensor/mpp_{tag}_{key}/state", "unit_of_measurement": "{unit}", "unique_id": "mpp_{tag}_{key}", "state_class": "measurement", "device_class": "power", "force_update": "true" }}'
+                        payload = f'{{"name": "{name}", "state_topic": "homeassistant/sensor/mpp_{tag}_{key}/state", "unit_of_measurement": "{unit}", "unique_id": "mpp_{tag}_{key}", "state_class": "measurement", "device_class": "power", "force_update": true }}'
                     elif unit == "":
-                        payload = f'{{"name": "{name}", "state_topic": "homeassistant/sensor/mpp_{tag}_{key}/state", "unique_id": "mpp_{tag}_{key}", "force_update": "true" }}'
+                        payload = f'{{"name": "{name}", "state_topic": "homeassistant/sensor/mpp_{tag}_{key}/state", "unique_id": "mpp_{tag}_{key}", "force_update": true }}'
                     else:
-                        payload = f'{{"name": "{name}", "state_topic": "homeassistant/sensor/mpp_{tag}_{key}/state", "unit_of_measurement": "{unit}", "unique_id": "mpp_{tag}_{key}", "force_update": "true" }}'
+                        payload = f'{{"name": "{name}", "state_topic": "homeassistant/sensor/mpp_{tag}_{key}/state", "unit_of_measurement": "{unit}", "unique_id": "mpp_{tag}_{key}", "force_update": true }}'
                     # Retain config/autodiscovery so HA picks it up after a restart
                     msg = {"topic": topic, "payload": payload, "retain": True}
                     msgs.append(msg)

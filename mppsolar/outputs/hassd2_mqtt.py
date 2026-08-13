@@ -121,7 +121,7 @@ class hassd2_mqtt(mqtt):
                     "name": f"{name}",
                     "state_topic": f"homeassistant/{sensor}/mpp_{tag}_{key}/state",
                     "unique_id": f"{tag}_{key}",
-                    "force_update": "true",
+                    "force_update": True,
                 }
                 if unit and unit != "bool":
                     payload["unit_of_measurement"] = f"{unit}"

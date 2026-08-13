@@ -1,6 +1,9 @@
 """ tests / unit / test_output_mqtt.py """
+import json
 import unittest
 
+from mppsolar.outputs.hass_mqtt import hass_mqtt
+from mppsolar.outputs.hassd_mqtt import hassd_mqtt
 from mppsolar.outputs.mqtt import mqtt
 
 
@@ -36,3 +39,32 @@ class TestMqttOutput(unittest.TestCase):
 
         # print(result)
         self.assertEqual(result, expected)
+
+    def test_hassd_mqtt_force_update_is_boolean(self):
+        """Home Assistant discovery payloads must use JSON booleans, not strings."""
+        data = {"Battery voltage": [51.4, "V"]}
+
+        config_msgs, _ = hassd_mqtt().build_msgs(
+            data=data,
+            tag="test",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            config={"remove_spaces": True, "keep_case": False},
+            fullconfig={"device": {"name": "mppsolar", "id": "mppsolar"}},
+        )
+
+        payload = json.loads(config_msgs[0]["payload"])
+        self.assertIsInstance(payload["force_update"], bool)
+        self.assertTrue(payload["force_update"])
+
+        msgs = hass_mqtt().build_msgs(
+            data={"Battery voltage": [51.4, "V"]},
+            tag="test",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+        )
+        payload = json.loads(msgs[0]["payload"])
+        self.assertIsInstance(payload["force_update"], bool)
+        self.assertTrue(payload["force_update"])
