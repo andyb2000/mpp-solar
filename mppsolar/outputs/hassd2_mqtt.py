@@ -70,6 +70,8 @@ class hassd2_mqtt(mqtt):
         # Build array of mqtt messages with hass update format
         config_msgs = []
         value_msgs = []
+        device_components = {}
+        safe_device_id = re.sub(r"[^A-Za-z0-9_-]+", "_", str(device_id)).strip("_") or "mppsolar"
 
         # Loop through responses
         for key, values in data.items():
@@ -114,6 +116,40 @@ class hassd2_mqtt(mqtt):
                         value = "ON"
                 else:
                     sensor = "sensor"
+                component_id = f"mpp_{tag}_{key}"
+                component_cfg = {
+                    "p": sensor,
+                    "name": f"{orig_key}",
+                    "state_topic": f"homeassistant/{sensor}/mpp_{tag}_{key}/state",
+                    "unique_id": component_id,
+                    "force_update": True,
+                }
+                if unit and unit != "bool":
+                    component_cfg["unit_of_measurement"] = f"{unit}"
+                if device_class:
+                    component_cfg["device_class"] = device_class
+                if state_class:
+                    component_cfg["state_class"] = state_class
+                if icon:
+                    component_cfg["icon"] = icon
+                if unit == "Hz":
+                    component_cfg["device_class"] = "frequency"
+                if unit in ["A", "mA"]:
+                    component_cfg["device_class"] = "current"
+                if unit in ["V", "mV"]:
+                    component_cfg["device_class"] = "voltage"
+                if unit in ["W", "kW"]:
+                    component_cfg["device_class"] = "power"
+                if unit == "Wh" or unit == "kWh":
+                    component_cfg.update(
+                        {
+                            "icon": "mdi:counter",
+                            "device_class": "energy",
+                            "state_class": "total_increasing",
+                            "last_reset": str(datetime.now()),
+                        }
+                    )
+                device_components[component_id] = component_cfg
                 topic = f"homeassistant/{sensor}/mpp_{tag}_{key}/config"
                 topic = topic.replace(" ", "_")
                 name = f"{orig_key}"
@@ -171,6 +207,25 @@ class hassd2_mqtt(mqtt):
                 topic = f"homeassistant/{sensor}/mpp_{tag}_{key}/state"
                 msg = {"topic": topic, "payload": value}
                 value_msgs.append(msg)
+
+        if device_components:
+            device_payload = {
+                "device": {
+                    "name": device_name,
+                    "identifiers": [device_id],
+                    "model": device_model,
+                    "manufacturer": device_manufacturer,
+                },
+                "origin": {"name": "MPP-Solar", "sw": "dev"},
+                "components": device_components,
+            }
+            config_msgs.append(
+                {
+                    "topic": f"homeassistant/device/{safe_device_id}/config",
+                    "payload": js.dumps(device_payload),
+                    "retain": True,
+                }
+            )
         return config_msgs, value_msgs
 
     def output(self, *args, **kwargs):

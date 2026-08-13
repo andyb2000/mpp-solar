@@ -68,3 +68,27 @@ class TestMqttOutput(unittest.TestCase):
         payload = json.loads(msgs[0]["payload"])
         self.assertIsInstance(payload["force_update"], bool)
         self.assertTrue(payload["force_update"])
+
+    def test_hassd_mqtt_device_discovery_has_components(self):
+        """Home Assistant prefers device discovery with a shared device and components map."""
+        data = {"Battery voltage": [51.4, "V"]}
+
+        config_msgs, _ = hassd_mqtt().build_msgs(
+            data=data,
+            tag="test",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            config={"remove_spaces": True, "keep_case": False},
+            fullconfig={"device": {"name": "solar", "id": "solar"}},
+        )
+
+        device_topic = next(
+            msg["topic"] for msg in config_msgs if msg["topic"].startswith("homeassistant/device/")
+        )
+        self.assertEqual(device_topic, "homeassistant/device/solar/config")
+
+        payload = json.loads(next(msg["payload"] for msg in config_msgs if msg["topic"] == device_topic))
+        self.assertIn("device", payload)
+        self.assertIn("components", payload)
+        self.assertTrue(any(key.endswith("battery_voltage") for key in payload["components"]))
