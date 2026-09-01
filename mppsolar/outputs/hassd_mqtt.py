@@ -15,10 +15,18 @@ class hassd_mqtt(mqtt):
 
     def __init__(self, *args, **kwargs) -> None:
         log.debug(f"__init__: kwargs {kwargs}")
+        self._known_state_topics = []
 
     def build_msgs(self, *args, **kwargs):
         log.debug(f"kwargs {kwargs}")
         data = get_kwargs(kwargs, "data")
+        if data is not None and data.get("validity check") is not None:
+            if self._known_state_topics:
+                return [], [
+                    {"topic": topic, "payload": "Unavailable", "retain": False}
+                    for topic in self._known_state_topics
+                ]
+            return [], []
         # Clean data
         command = data.pop("_command", None)
         data.pop("_command_description", None)
@@ -69,6 +77,7 @@ class hassd_mqtt(mqtt):
         # Build array of mqtt messages with hass update format
         config_msgs = []
         value_msgs = []
+        self._known_state_topics = []
         device_components = {}
         safe_device_id = re.sub(r"[^A-Za-z0-9_-]+", "_", str(device_id)).strip("_") or "mppsolar"
 
@@ -158,6 +167,8 @@ class hassd_mqtt(mqtt):
                 )
                 # VALUE SETTING
                 topic = f"homeassistant/{sensor}/mpp_{tag}_{key}/state"
+                if topic not in self._known_state_topics:
+                    self._known_state_topics.append(topic)
                 # State messages are time-sensitive — do not retain stale values
                 msg = {"topic": topic, "payload": value, "retain": False}
                 value_msgs.append(msg)

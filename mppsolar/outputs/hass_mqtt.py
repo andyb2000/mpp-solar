@@ -14,9 +14,17 @@ class hass_mqtt(mqtt):
 
     def __init__(self, *args, **kwargs) -> None:
         log.debug(f"__init__: kwargs {kwargs}")
+        self._known_state_topics = []
 
     def build_msgs(self, *args, **kwargs):
         data = get_kwargs(kwargs, "data")
+        if data is not None and data.get("validity check") is not None:
+            if self._known_state_topics:
+                return [
+                    {"topic": topic, "payload": "Unavailable", "retain": False}
+                    for topic in self._known_state_topics
+                ]
+            return []
         tag = get_kwargs(kwargs, "tag")
         keep_case = get_kwargs(kwargs, "keep_case")
 
@@ -31,6 +39,7 @@ class hass_mqtt(mqtt):
         # assumes hass_config has been run
         # or hass updated manually
         msgs = []
+        self._known_state_topics = []
         # Remove command and _command_description
         data.pop("_command", None)
         data.pop("_command_description", None)
@@ -67,6 +76,8 @@ class hass_mqtt(mqtt):
                     elif value == 1 or value == "1" or value == "enabled":
                         value = "ON"
                     # State messages are time-sensitive — do not retain stale values
+                    if topic not in self._known_state_topics:
+                        self._known_state_topics.append(topic)
                     msg = {"topic": topic, "payload": value, "retain": False}
                     msgs.append(msg)
                 else:
@@ -89,6 +100,8 @@ class hass_mqtt(mqtt):
                     # 'tag'/status/total_output_active_power/value 1250
                     # 'tag'/status/total_output_active_power/unit W
                     topic = f"homeassistant/sensor/mpp_{tag}_{key}/state"
+                    if topic not in self._known_state_topics:
+                        self._known_state_topics.append(topic)
                     # State messages are time-sensitive — do not retain stale values
                     msg = {"topic": topic, "payload": value, "retain": False}
                     msgs.append(msg)

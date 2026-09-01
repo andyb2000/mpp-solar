@@ -102,3 +102,32 @@ class TestMqttOutput(unittest.TestCase):
         self.assertTrue(tombstones[0]["topic"].startswith("homeassistant/sensor/mpp_"))
         self.assertTrue(tombstones[0]["topic"].endswith("battery_voltage/config"))
         self.assertTrue(tombstones[0]["retain"])
+
+    def test_hassd_mqtt_response_validity_failure_sets_unavailable(self):
+        """A bad protocol response should mark known state topics unavailable until valid readings return."""
+        processor = hassd_mqtt()
+        processor.build_msgs(
+            data={"Battery voltage": [51.4, "V"]},
+            tag="test",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            config={"remove_spaces": True, "keep_case": False, "tag": "test"},
+            fullconfig={"device": {"name": "mppsolar", "id": "mppsolar"}},
+        )
+
+        config_msgs, value_msgs = processor.build_msgs(
+            data={"validity check": ["Error: Response to short", ""]},
+            tag="test",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            config={"remove_spaces": True, "keep_case": False, "tag": "test"},
+            fullconfig={"device": {"name": "mppsolar", "id": "mppsolar"}},
+        )
+
+        self.assertEqual(config_msgs, [])
+        self.assertIn(
+            {"topic": "homeassistant/sensor/mpp_test_battery_voltage/state", "payload": "Unavailable", "retain": False},
+            value_msgs,
+        )
