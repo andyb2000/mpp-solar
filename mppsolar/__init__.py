@@ -633,12 +633,17 @@ def main():
     daemon.notify("Service Initializing ...")
     log_process_info("AFTER_DAEMON_NOTIFY", log.info)
 
+    # Output processor instances are cached per command entry (rather than
+    # re-created every loop iteration) so stateful outputs - eg hassd_mqtt,
+    # which remembers the mqtt state topics it has published so it can null
+    # them out after a validity check failure - keep that state across cycles.
+    _output_cache = {}
 
     while True:
         # Loop through the configured commands
         if not args.daemon:
             log.info(f"Looping {len(_commands)} commands")
-        for _device, _command, _tag, _outputs, filter, excl_filter, dev in _commands:
+        for _cmd_index, (_device, _command, _tag, _outputs, filter, excl_filter, dev) in enumerate(_commands):
             # for item in mppUtilArray:
             # Tell systemd watchdog we are still alive
             daemon.watchdog()
@@ -647,7 +652,9 @@ def main():
             results = _device.run_command(command=_command)
             log.debug(f"results: {results}")
             # send to output processor(s)
-            outputs = get_outputs(_outputs)
+            if _cmd_index not in _output_cache:
+                _output_cache[_cmd_index] = get_outputs(_outputs)
+            outputs = _output_cache[_cmd_index]
             for op in outputs:
                 # maybe include the command and what the command is im the output
                 # eg QDI run, Display Inverter Default Settings

@@ -128,6 +128,6 @@ class TestMqttOutput(unittest.TestCase):
 
         self.assertEqual(config_msgs, [])
         self.assertIn(
-            {"topic": "homeassistant/sensor/mpp_test_battery_voltage/state", "payload": "Unavailable", "retain": False},
+            {"topic": "homeassistant/sensor/mpp_test_battery_voltage/state", "payload": "unavailable", "retain": False},
             value_msgs,
         )

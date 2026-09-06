@@ -21,9 +21,15 @@ class hassd_mqtt(mqtt):
         log.debug(f"kwargs {kwargs}")
         data = get_kwargs(kwargs, "data")
         if data is not None and data.get("validity check") is not None:
+            validity_msg = data.get("validity check")
+            log.warning(f"validity check failed ({validity_msg}), marking known state topics unavailable")
             if self._known_state_topics:
+                # "unavailable" is Home Assistant's reserved state payload (must be this
+                # exact lower-case string - HA matches it verbatim, not via numeric/bool
+                # coercion) so entities render as "Unavailable" rather than keep showing
+                # the last-good reading from before the inverter error.
                 return [], [
-                    {"topic": topic, "payload": "Unavailable", "retain": False}
+                    {"topic": topic, "payload": "unavailable", "retain": False}
                     for topic in self._known_state_topics
                 ]
             return [], []
