@@ -30,6 +30,19 @@ mqtt_user=mqttuser
 mqtt_pass=mqttpass
 ```
 
+### hassd_mqtt: recovering from a validity check failure
+When a response fails its validity check (eg "Error: Response to short" or "Error:
+Invalid response CRCs"), the `hassd_mqtt` output publishes `unavailable` to every
+state topic it knows about, rather than leaving Home Assistant showing the last
+good reading. To also cover a failure that happens right after the daemon has
+been (re)started - before it has published anything itself in this run - it
+persists the topic list to a small state file, in a directory set by `state_dir`
+under `[SETUP]` (default `/var/tmp/mppsolar`), see [configfile.md](configfile.md):
+```
+[SETUP]
+state_dir=/var/tmp/mppsolar
+```
+
 ### Device Section with MQTT Commands
 ```
 [Inverter_1]

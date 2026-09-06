@@ -457,6 +457,10 @@ def main():
     push_url = args.pushurl
     prom_output_dir = args.prom_output_dir
     dev = args.dev
+    # Directory stateful outputs (eg hassd_mqtt) use to persist state across daemon
+    # restarts. No CLI flag - set via [SETUP] state_dir= in the config file. Left as
+    # None (each output's own default applies) when not configured.
+    state_dir = None
 
     _commands = []
 
@@ -486,6 +490,9 @@ def main():
         mqtt_broker.update("username", config["SETUP"].get("mqtt_user", fallback=None))
         mqtt_broker.update("password", config["SETUP"].get("mqtt_pass", fallback=None))
         log_file_path = config["SETUP"].get("log_file", fallback="/var/log/mpp-solar.log")
+        # optional - directory used by stateful outputs (eg hassd_mqtt) to persist
+        # state across daemon restarts, see docs/configfile.md
+        state_dir = config["SETUP"].get("state_dir", fallback=state_dir)
         sections.remove("SETUP")
 
         # Track device configurations for MQTT command setup
@@ -670,6 +677,7 @@ def main():
                     mongo_db=mongo_db,
                     push_url=push_url,
                     prom_output_dir=prom_output_dir,
+                    state_dir=state_dir,
                     # mqtt_port=mqtt_port,
                     # mqtt_user=mqtt_user,
                     # mqtt_pass=mqtt_pass,

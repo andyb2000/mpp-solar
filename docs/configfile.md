@@ -23,6 +23,15 @@ mqtt_pass=password
 
 # Daemon log file path and name can be configured, defaults to /var/log/mpp-solar.log
 log_file = /custom/path/to/mpp-solar.log
+
+# optional - directory used by stateful outputs (currently hassd_mqtt) to persist
+# state across daemon restarts, defaults to /var/tmp/mppsolar
+# hassd_mqtt uses this to remember which mqtt state topics it has published, so
+# that if the daemon is restarted and the very next reading from the inverter
+# fails (eg "Error: Response to short" / "Error: Invalid response CRCs"), it can
+# still mark those previously-published Home Assistant entities "unavailable"
+# instead of leaving them showing their last reading from before the restart.
+state_dir=/var/tmp/mppsolar
  
 ### The section name needs to be unique
 ### There can be multiple sections which are processed sequentially without pause

@@ -26,9 +26,9 @@ class hassd_mqtt(mqtt):
         self._state_file = None
         self._state_loaded = False
 
-    def _resolve_state_file(self, config, device_id, tag):
+    def _resolve_state_file(self, state_dir, device_id, tag):
         """Path used to persist known state topics across process restarts, unique per device+tag."""
-        state_dir = config.get("state_dir", DEFAULT_STATE_DIR) if config is not None else DEFAULT_STATE_DIR
+        state_dir = state_dir or DEFAULT_STATE_DIR
         safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", f"{device_id}_{tag}").strip("_") or "mppsolar"
         return os.path.join(state_dir, f"hassd_mqtt_{safe_name}.json")
 
@@ -72,8 +72,14 @@ class hassd_mqtt(mqtt):
         else:
             early_tag = get_kwargs(kwargs, "tag") or "mppsolar"
             early_device_id = get_kwargs(kwargs, "name", "mppsolar")
+        # state_dir may arrive as its own kwarg (set via [SETUP] state_dir= in the
+        # mpp-solar.conf config file, see docs/configfile.md) or, for the config-dict
+        # style callers, inside the per-output config mapping.
+        state_dir = get_kwargs(kwargs, "state_dir")
+        if state_dir is None and config is not None:
+            state_dir = config.get("state_dir")
         if self._state_file is None:
-            self._state_file = self._resolve_state_file(config, early_device_id, early_tag)
+            self._state_file = self._resolve_state_file(state_dir, early_device_id, early_tag)
         self._load_known_state_topics()
 
         if data.get("validity check") is not None:

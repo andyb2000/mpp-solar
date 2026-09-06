@@ -134,6 +134,40 @@ class TestMqttOutput(unittest.TestCase):
             value_msgs,
         )
 
+    def test_hassd_mqtt_state_dir_kwarg_used_when_no_config_dict(self):
+        """The daemon's ini-file main loop calls output() with a plain state_dir=
+        kwarg (no config dict) - make sure that path is honoured too."""
+        state_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, state_dir, ignore_errors=True)
+
+        first_run = hassd_mqtt()
+        first_run.build_msgs(
+            data={"Battery voltage": [51.4, "V"]},
+            tag="test",
+            name="mppsolar",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            state_dir=state_dir,
+        )
+
+        second_run = hassd_mqtt()
+        config_msgs, value_msgs = second_run.build_msgs(
+            data={"validity check": ["Error: Unable to connect to device", ""]},
+            tag="test",
+            name="mppsolar",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            state_dir=state_dir,
+        )
+
+        self.assertEqual(config_msgs, [])
+        self.assertIn(
+            {"topic": "homeassistant/sensor/mpp_test_battery_voltage/state", "payload": "unavailable", "retain": False},
+            value_msgs,
+        )
+
     def test_hassd_mqtt_restores_known_topics_after_restart(self):
         """A fresh process (eg after a daemon restart) that immediately fails to connect
         should still be able to mark the topics from its *previous* run unavailable,
