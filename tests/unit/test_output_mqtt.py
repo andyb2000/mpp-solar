@@ -1,5 +1,7 @@
 """ tests / unit / test_output_mqtt.py """
 import json
+import shutil
+import tempfile
 import unittest
 
 from mppsolar.outputs.hass_mqtt import hass_mqtt
@@ -124,6 +126,46 @@ class TestMqttOutput(unittest.TestCase):
             excl_filter=None,
             config={"remove_spaces": True, "keep_case": False, "tag": "test"},
             fullconfig={"device": {"name": "mppsolar", "id": "mppsolar"}},
+        )
+
+        self.assertEqual(config_msgs, [])
+        self.assertIn(
+            {"topic": "homeassistant/sensor/mpp_test_battery_voltage/state", "payload": "unavailable", "retain": False},
+            value_msgs,
+        )
+
+    def test_hassd_mqtt_restores_known_topics_after_restart(self):
+        """A fresh process (eg after a daemon restart) that immediately fails to connect
+        should still be able to mark the topics from its *previous* run unavailable,
+        by recovering them from the on-disk state cache rather than starting blank."""
+        state_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, state_dir, ignore_errors=True)
+        config = {"remove_spaces": True, "keep_case": False, "tag": "test", "state_dir": state_dir}
+        fullconfig = {"device": {"name": "mppsolar", "id": "mppsolar"}}
+
+        # First process: gets one good reading, persisting its known topics to disk.
+        first_run = hassd_mqtt()
+        first_run.build_msgs(
+            data={"Battery voltage": [51.4, "V"]},
+            tag="test",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            config=config,
+            fullconfig=fullconfig,
+        )
+
+        # Second process (simulating a restart): brand new instance, no in-memory history,
+        # and the very first thing it sees is a validity check failure.
+        second_run = hassd_mqtt()
+        config_msgs, value_msgs = second_run.build_msgs(
+            data={"validity check": ["Error: Unable to connect to device", ""]},
+            tag="test",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            config=config,
+            fullconfig=fullconfig,
         )
 
         self.assertEqual(config_msgs, [])

@@ -1,5 +1,6 @@
 import json as js
 import logging
+import os
 import re
 from datetime import datetime
 
@@ -7,6 +8,12 @@ from ..helpers import get_kwargs, key_wanted
 from .mqtt import mqtt
 
 log = logging.getLogger("hassd_mqtt")
+
+# Where the last-known set of state topics is cached between daemon restarts,
+# so a validity check failure right after startup can still mark previously
+# published entities unavailable, instead of leaving their last-good reading
+# (from before the restart) showing forever. Overridable via config: state_dir.
+DEFAULT_STATE_DIR = "/var/tmp/mppsolar"
 
 
 class hassd_mqtt(mqtt):
@@ -16,18 +23,68 @@ class hassd_mqtt(mqtt):
     def __init__(self, *args, **kwargs) -> None:
         log.debug(f"__init__: kwargs {kwargs}")
         self._known_state_topics = []
+        self._state_file = None
+        self._state_loaded = False
+
+    def _resolve_state_file(self, config, device_id, tag):
+        """Path used to persist known state topics across process restarts, unique per device+tag."""
+        state_dir = config.get("state_dir", DEFAULT_STATE_DIR) if config is not None else DEFAULT_STATE_DIR
+        safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", f"{device_id}_{tag}").strip("_") or "mppsolar"
+        return os.path.join(state_dir, f"hassd_mqtt_{safe_name}.json")
+
+    def _load_known_state_topics(self):
+        """Recover the topic list saved by a previous run of this process, once per instance."""
+        if self._state_loaded:
+            return
+        self._state_loaded = True
+        try:
+            with open(self._state_file, "r") as f:
+                topics = js.load(f)
+            if isinstance(topics, list) and not self._known_state_topics:
+                self._known_state_topics = topics
+                log.debug(f"Restored {len(topics)} known state topics from {self._state_file}")
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError) as e:
+            log.warning(f"Could not read hassd_mqtt state file {self._state_file}: {e}")
+
+    def _save_known_state_topics(self):
+        try:
+            os.makedirs(os.path.dirname(self._state_file), exist_ok=True)
+            with open(self._state_file, "w") as f:
+                js.dump(self._known_state_topics, f)
+        except OSError as e:
+            log.warning(f"Could not persist hassd_mqtt state file {self._state_file}: {e}")
 
     def build_msgs(self, *args, **kwargs):
         log.debug(f"kwargs {kwargs}")
         data = get_kwargs(kwargs, "data")
-        if data is not None and data.get("validity check") is not None:
+        if data is None:
+            return [], []
+
+        # Identify device/tag up front (independent of success/failure) so we can
+        # locate this instance's on-disk state cache before deciding what to do.
+        config = get_kwargs(kwargs, "config")
+        if config is not None:
+            fullconfig = get_kwargs(kwargs, "fullconfig")
+            early_tag = config.get("tag", None) or "mppsolar"
+            early_device_id = (fullconfig or {}).get("device", {}).get("id", "mppsolar")
+        else:
+            early_tag = get_kwargs(kwargs, "tag") or "mppsolar"
+            early_device_id = get_kwargs(kwargs, "name", "mppsolar")
+        if self._state_file is None:
+            self._state_file = self._resolve_state_file(config, early_device_id, early_tag)
+        self._load_known_state_topics()
+
+        if data.get("validity check") is not None:
             validity_msg = data.get("validity check")
             log.warning(f"validity check failed ({validity_msg}), marking known state topics unavailable")
             if self._known_state_topics:
                 # "unavailable" is Home Assistant's reserved state payload (must be this
                 # exact lower-case string - HA matches it verbatim, not via numeric/bool
                 # coercion) so entities render as "Unavailable" rather than keep showing
-                # the last-good reading from before the inverter error.
+                # the last-good reading from before the inverter error - including a
+                # reading from before this process last started.
                 return [], [
                     {"topic": topic, "payload": "unavailable", "retain": False}
                     for topic in self._known_state_topics
@@ -197,6 +254,8 @@ class hassd_mqtt(mqtt):
                     "retain": True,
                 }
             )
+        if self._known_state_topics:
+            self._save_known_state_topics()
         return config_msgs, value_msgs
 
     def output(self, *args, **kwargs):
