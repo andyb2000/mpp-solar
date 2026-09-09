@@ -101,6 +101,18 @@ class hassd_mqtt(mqtt):
         data.pop("_command_description", None)
         data.pop("raw_response", None)
 
+        # device.py reports a failed command (timeout, decode error, retries
+        # exhausted, ...) as a single {"ERROR": [msg, ""]} entry, which becomes
+        # a normal text sensor below (eg sensor.mpp_{tag}_error) - that part is
+        # wanted. But once the inverter starts responding again, a successful
+        # response has no "ERROR" key at all, so that sensor would never be
+        # republished and would keep showing the old error text forever (see
+        # the "validity check" handling above for the other half of this class
+        # of bug). Explicitly mark it "OK" on every cycle that isn't itself an
+        # error, so it behaves like any other sensor - always refreshed.
+        if "ERROR" not in data:
+            data["ERROR"] = ["OK", ""]
+
         # check if config supplied
         config = get_kwargs(kwargs, "config")
         if config is not None:
