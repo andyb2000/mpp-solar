@@ -82,36 +82,14 @@ class hassd_mqtt(mqtt):
             self._state_file = self._resolve_state_file(state_dir, early_device_id, early_tag)
         self._load_known_state_topics()
 
-        if data.get("validity check") is not None:
-            validity_msg = data.get("validity check")
-            log.warning(f"validity check failed ({validity_msg}), marking known state topics unavailable")
-            if self._known_state_topics:
-                # "unavailable" is Home Assistant's reserved state payload (must be this
-                # exact lower-case string - HA matches it verbatim, not via numeric/bool
-                # coercion) so entities render as "Unavailable" rather than keep showing
-                # the last-good reading from before the inverter error - including a
-                # reading from before this process last started.
-                return [], [
-                    {"topic": topic, "payload": "unavailable", "retain": False}
-                    for topic in self._known_state_topics
-                ]
-            return [], []
+        # Capture this before it's popped/mutated below - it decides which branch
+        # (failure vs success) the rest of this method takes.
+        validity_msg = data.get("validity check")
+
         # Clean data
         command = data.pop("_command", None)
         data.pop("_command_description", None)
         data.pop("raw_response", None)
-
-        # device.py reports a failed command (timeout, decode error, retries
-        # exhausted, ...) as a single {"ERROR": [msg, ""]} entry, which becomes
-        # a normal text sensor below (eg sensor.mpp_{tag}_error) - that part is
-        # wanted. But once the inverter starts responding again, a successful
-        # response has no "ERROR" key at all, so that sensor would never be
-        # republished and would keep showing the old error text forever (see
-        # the "validity check" handling above for the other half of this class
-        # of bug). Explicitly mark it "OK" on every cycle that isn't itself an
-        # error, so it behaves like any other sensor - always refreshed.
-        if "ERROR" not in data:
-            data["ERROR"] = ["OK", ""]
 
         # check if config supplied
         config = get_kwargs(kwargs, "config")
@@ -154,6 +132,60 @@ class hassd_mqtt(mqtt):
                 tag = command
             else:
                 tag = "mppsolar"
+
+        def _status_key(raw_key):
+            """Apply the same key transforms the main loop below uses, so a
+            status topic computed here matches the one that loop would build."""
+            key = raw_key
+            if remove_spaces:
+                key = key.replace(" ", "_")
+            if not keep_case:
+                key = key.lower()
+            return key
+
+        if validity_msg is not None:
+            # Protocol-level decode failure (bad CRC, short/empty response, ...).
+            # Refresh the "validity_check" status sensor with the failure text
+            # itself (mirroring the "ERROR" status sensor below) instead of just
+            # marking everything else unavailable and leaving this sensor
+            # showing whatever it last said - otherwise, once the device
+            # recovers, nothing would ever touch this topic again either, and
+            # it's left stuck on a historic fault forever.
+            log.warning(f"validity check failed ({validity_msg}), marking known state topics unavailable")
+            validity_topic = f"homeassistant/sensor/mpp_{tag}_{_status_key('validity check')}/state"
+            error_topic = f"homeassistant/sensor/mpp_{tag}_{_status_key('ERROR')}/state"
+            error_payload = data.get("ERROR", ["OK", ""])[0]
+
+            # Previously known *real* topics (excludes the two status topics
+            # themselves, which get their own fresh value below) still need
+            # marking unavailable - see the module-level comment on why.
+            previously_known = [t for t in self._known_state_topics if t not in (validity_topic, error_topic)]
+
+            value_msgs = [
+                {"topic": validity_topic, "payload": validity_msg[0], "retain": False},
+                {"topic": error_topic, "payload": error_payload, "retain": False},
+            ]
+            value_msgs.extend(
+                {"topic": topic, "payload": "unavailable", "retain": False} for topic in previously_known
+            )
+            for topic in (validity_topic, error_topic, *previously_known):
+                if topic not in self._known_state_topics:
+                    self._known_state_topics.append(topic)
+            self._save_known_state_topics()
+            return [], value_msgs
+
+        # device.py reports a failed command (timeout, decode error, retries
+        # exhausted, ...) as a single {"ERROR": [msg, ""]} entry, which becomes
+        # a normal text sensor below (eg sensor.mpp_{tag}_error) - that part is
+        # wanted. But once the inverter starts responding again, a successful
+        # response has no "ERROR" key at all, so that sensor (and the
+        # "validity_check" one handled above) would never be republished and
+        # would keep showing the old error text forever. Explicitly mark both
+        # "OK" on every cycle that isn't itself a failure, so they behave like
+        # any other sensor - always refreshed.
+        if "ERROR" not in data:
+            data["ERROR"] = ["OK", ""]
+        data["validity check"] = ["OK", ""]
 
         # Build array of mqtt messages with hass update format
         config_msgs = []

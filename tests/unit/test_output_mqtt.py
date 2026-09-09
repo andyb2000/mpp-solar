@@ -99,10 +99,11 @@ class TestMqttOutput(unittest.TestCase):
             component for key, component in payload["components"].items() if key.endswith("battery_voltage")
         )
         self.assertEqual(battery_component["name"], "Battery voltage")
-        # A successful cycle also carries an always-present "ERROR" -> "OK" status
-        # sensor (see build_msgs), so its own config tombstone is expected here too.
+        # A successful cycle also carries two always-present status sensors -
+        # "ERROR" -> "OK" and "validity check" -> "OK" (see build_msgs) - so
+        # their own config tombstones are expected here too.
         tombstones = [msg for msg in config_msgs if msg["payload"] == ""]
-        self.assertEqual(len(tombstones), 2)
+        self.assertEqual(len(tombstones), 3)
         battery_tombstone = next(t for t in tombstones if t["topic"].endswith("battery_voltage/config"))
         self.assertTrue(battery_tombstone["topic"].startswith("homeassistant/sensor/mpp_"))
         self.assertTrue(battery_tombstone["retain"])
@@ -133,6 +134,46 @@ class TestMqttOutput(unittest.TestCase):
         self.assertEqual(config_msgs, [])
         self.assertIn(
             {"topic": "homeassistant/sensor/mpp_test_battery_voltage/state", "payload": "unavailable", "retain": False},
+            value_msgs,
+        )
+
+    def test_hassd_mqtt_validity_check_sensor_clears_once_device_responds_again(self):
+        """The "validity_check" status sensor created for a protocol-level decode
+        failure must itself be refreshed once valid readings return, not left
+        showing the old failure text forever (the historic-fault-stuck bug)."""
+        processor = hassd_mqtt()
+        config = {"remove_spaces": True, "keep_case": False, "tag": "test"}
+        fullconfig = {"device": {"name": "mppsolar", "id": "mppsolar"}}
+
+        _, value_msgs = processor.build_msgs(
+            data={"validity check": ["Error: Response to short", ""]},
+            tag="test",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            config=config,
+            fullconfig=fullconfig,
+        )
+        self.assertIn(
+            {
+                "topic": "homeassistant/sensor/mpp_test_validity_check/state",
+                "payload": "Error: Response to short",
+                "retain": False,
+            },
+            value_msgs,
+        )
+
+        _, value_msgs = processor.build_msgs(
+            data={"Battery voltage": [51.4, "V"]},
+            tag="test",
+            keep_case=False,
+            filter=None,
+            excl_filter=None,
+            config=config,
+            fullconfig=fullconfig,
+        )
+        self.assertIn(
+            {"topic": "homeassistant/sensor/mpp_test_validity_check/state", "payload": "OK", "retain": False},
             value_msgs,
         )
 
